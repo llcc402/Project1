@@ -20,7 +20,7 @@ In order to download and install kaggle api, you must have **pip** installed. We
 
 6. Save `kaggle.json` to folder `C:\Users\<user-name>\.kaggle\`. The trick of creating `.kaggle` in Windows is to write the folder name as `.kaggle.`. (**Do not** forget the dot in the end).
 
-*** How to use kaggle api
+### How to use kaggle api
 
 - Use command `!kaggle competitions download -c competition-name -p folder-name` to download all the files of a competition. 
 
