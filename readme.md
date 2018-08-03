@@ -16,7 +16,7 @@ In order to download and install kaggle api, you must have **pip** installed. We
 
 4. Use commands `pip install kaggle` to install kaggle api.
 
-5. Go to https://www.kaggle.com/<username>/account and select 'Create API Token'. This will trgger the download of `kaggle.json`
+5. Go to <https://www.kaggle.com/<username>/account> and select 'Create API Token'. This will trgger the download of `kaggle.json`
 
 6. Save `kaggle.json` to folder `C:\Users\<user-name>\.kaggle\`. The trick of creating `.kaggle` in Windows is to write the folder name as `.kaggle.`. (**Do not** forget the dot in the end).
 
