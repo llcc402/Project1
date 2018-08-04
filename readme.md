@@ -1,4 +1,4 @@
-# Read me
+# Kaggle API
 
 ## Use Kaggle API to download data and submit result
 
@@ -14,7 +14,7 @@ In order to download and install kaggle api, you must have **pip** installed. We
 
 3. Launch qtconsole or spyder.
 
-4. Use commands `pip install kaggle` to install kaggle api.
+4. Use commands `!pip install kaggle` to install kaggle api.
 
 5. Go to <https://www.kaggle.com/username/account> and select 'Create API Token'. This will trgger the download of `kaggle.json`
 
