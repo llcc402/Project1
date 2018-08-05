@@ -47,11 +47,22 @@ le = preprocessing.LabelEncoder()
 train_test = pd.concat([data1.iloc[:,1:], test], axis = 0)
 train_test[obj_cols] = train_test[obj_cols].apply(le.fit_transform)
 
-#%%
+#%% CONSTRUCT TRAINING AND TEST DATA
 training = train_test.iloc[:307511]
 test = train_test.iloc[307511:]
 y = data1['TARGET']
 
+#%% SPLIT TRAINING DATA TO REGULAARIZE MODEL
+idx = np.random.permutation(307511)
+xTrain = training.iloc[idx[:250000]]
+yTrain = y.iloc[idx[:250000]]
+xVal = training.iloc[idx[250000:]]
+yVal = y.iloc[idx[250000:]]
+
 #%% TRAIN A RANDOM FOREST
-rfc = RFC(n_estimators=500)
-model = rfc.fit(training, y)
+rfc = RFC(n_estimators=500, max_features=30)
+model = rfc.fit(xTrain, yTrain)
+print('=============== The training score ===============')
+print(model.score(xTrain, yTrain))
+print('============== The valication score ==============')
+print(model.score(xVal, yVal))
