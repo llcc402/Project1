@@ -60,8 +60,8 @@ xVal = training.iloc[idx[250000:]]
 yVal = y.iloc[idx[250000:]]
 
 #%% TRAIN A RANDOM FOREST
-rfc = RFC(n_estimators=500, max_features=15, max_depth=5)
-model = rfc.fit(xTrain, yTrain)
+rfc = RFC(n_estimators=500)
+model = rfc.fit(xTrain, yTrain, yTrain * 10 + 1)
 print('=============== The training score ===============')
 print(model.score(xTrain, yTrain))
 print('============== The valication score ==============')
