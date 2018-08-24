@@ -9,6 +9,8 @@ Created on Thu Aug 23 15:14:51 2018
 import pandas as pd 
 import numpy as np 
 from collections import defaultdict
+import lightgbm as lgb
+import datetime
 
 #%% read app data
 app_train = pd.read_csv('application_train.csv', index_col = 0)
@@ -127,19 +129,158 @@ bureau_agg = bureau.groupby('SK_ID_BUREAU').agg(bureau_agg_calcs)
 # rename column name
 bureau_agg.columns = [c[0] + '_' + c[1] for c in bureau_agg.columns]
 
+#%% read previous
+pre = pd.read_csv('previous_application.csv', index_col=1)
+
 #%% 
 
+original_col_names = pre.columns
 
+# one-hot encoding
+pre = pd.get_dummies(pre, dummy_na = True)
 
+# find out categorical columns
+cat_columns = [c for c in pre.columns if c not in original_col_names]
 
+# replace strange values with np.nan
+pre.DAYS_FIRST_DRAWING.replace(365243, np.nan, inplace = True)
+pre.DAYS_FIRST_DUE.replace(365243, np.nan, inplace = True)
+pre.DAYS_LAST_DUE.replace(365243, np.nan, inplace = True)
+pre.DAYS_LAST_DUE_1ST_VERSION.replace(365243, np.nan, inplace = True)
+pre.DAYS_TERMINATION.replace(365243, np.nan, inplace = True)
 
+# add new feature:  value_asked / value_received
+pre['PRE_APP_CREDIT_RATIO'] = pre['AMT_APPLICATION'] / pre['AMT_CREDIT']
 
+#%% aggreagation 
 
+num_agg_calcs = {'AMT_ANNUITY':['min', 'max', 'sum', 'mean'],
+                 'AMT_APPLICATION':['min','max','sum'],
+                 'AMT_CREDIT':['min','max','mean'],
+                 'AMT_DOWN_PAYMENT':['min', 'max', 'mean'],
+                 'AMT_GOODS_PRICE':['min', 'max', 'mean'],
+                 'HOUR_APPR_PROCESS_START':['min', 'max', 'mean'],
+                 'RATE_DOWN_PAYMENT':['min', 'max', 'sum','mean'],
+                 'PRE_APP_CREDIT_RATIO':['min', 'max', 'mean', 'sum', 'var'],
+                 'DAYS_DECISION': ['min', 'max', 'mean'],
+                 'CNT_PAYMENT': ['mean', 'sum']}
 
+cat_agg_calcs = {}
+for c in cat_columns:
+    cat_agg_calcs[c] = ['mean']
 
+pre_agg = pre.groupby(pre.index).agg({**num_agg_calcs, **cat_agg_calcs})
 
+# rename column names
+pre_agg.columns = [c[0] + '_' + c[1] for c in pre_agg.columns]
 
+#%% read pos_cach_balance
+pos_cach_balance = pd.read_csv('POS_CASH_balance.csv', index_col = 1)
 
+#%%
+# remove errors
+pos_cach_balance = pos_cach_balance.loc[pos_cach_balance.NAME_CONTRACT_STATUS != 'XNA']
 
+# one-hot encoding
+pos_cach_balance = pd.get_dummies(pos_cach_balance, dummy_na = True)
 
+# cat columns
+cat_columns = ['NAME_CONTRACT_STATUS_Active', 'NAME_CONTRACT_STATUS_Amortized debt',
+       'NAME_CONTRACT_STATUS_Approved', 'NAME_CONTRACT_STATUS_Canceled',
+       'NAME_CONTRACT_STATUS_Completed', 'NAME_CONTRACT_STATUS_Demand',
+       'NAME_CONTRACT_STATUS_Returned to the store',
+       'NAME_CONTRACT_STATUS_Signed', 'NAME_CONTRACT_STATUS_nan']
 
+num_agg_calcs = {'MONTHS_BALANCE':['size', 'max', 'mean'],
+                 'CNT_INSTALMENT':['max', 'sum'], 
+                 'SK_DPD':['max', 'mean'],
+                 'SK_DPD_DEF':['max', 'mean']}
+
+cat_agg_calcs = {}
+for c in cat_columns:
+    cat_agg_calcs[c] = 'mean'
+    
+pos_cach_balance_agg = pos_cach_balance.groupby(pos_cach_balance.index).\
+                                        agg({**num_agg_calcs, **cat_agg_calcs})
+                                        
+pos_cach_balance_agg.columns = [c[0] + '_' + c[1] for c in pos_cach_balance_agg.columns]
+
+#%% read installments_payments
+
+ins_pay = pd.read_csv('installments_payments.csv', index_col = 1)
+
+#%% 
+
+# create new features: before or late in repay
+ins_pay['DPD'] = ins_pay['DAYS_ENTRY_PAYMENT'] - ins_pay['DAYS_INSTALMENT']
+ins_pay['DBD'] = ins_pay['DAYS_INSTALMENT'] - ins_pay['DAYS_ENTRY_PAYMENT']
+ins_pay['DPD'] = ins_pay['DPD'].apply(lambda x: x > 0)
+ins_pay['DBD'] = ins_pay['DBD'].apply(lambda x: x > 0)
+
+# create features: diff and percent should pay and actual payment
+ins_pay['INSTALLMENT_ACTUAL_DIFF'] = ins_pay['AMT_INSTALMENT'] - ins_pay['AMT_PAYMENT']
+ins_pay['INSTALLMENT_ACTUAL_RATIO'] = ins_pay['AMT_INSTALMENT'] / ins_pay['AMT_PAYMENT']
+
+# there is no "object" type in ins_pay.columns 
+num_agg_calcs = {'NUM_INSTALMENT_VERSION':['nunique'],
+                 'DPD':['sum', 'mean'],
+                 'DBD':['sum', 'mean'],
+                 'INSTALLMENT_ACTUAL_DIFF':['sum', 'mean', 'max', 'var'],
+                 'INSTALLMENT_ACTUAL_RATIO':['sum', 'mean', 'max', 'var'],
+                 'AMT_INSTALMENT':['sum', 'mean'],
+                 'AMT_PAYMENT':['sum', 'mean'],
+                 'DAYS_ENTRY_PAYMENT':['max', 'min', 'sum']}
+
+ins_pay_agg = ins_pay.groupby(ins_pay.index).agg(num_agg_calcs)
+
+# rename column names
+ins_pay_agg.columns = [c[0] + '_' + c[1] for c in ins_pay_agg.columns]
+
+#%% read credit_card_balance
+credict_card_balance = pd.read_csv('credit_card_balance.csv', index_col = 1)
+
+#%% 
+
+credict_card_balance = credict_card_balance.drop('SK_ID_PREV', axis = 1)
+
+credict_card_balance_agg = credict_card_balance.groupby(credict_card_balance.index).\
+                           agg(['mean', 'max', 'min', 'sum', 'var'])
+
+credict_card_balance_agg.columns = [c[0] + '_' + c[1] for c in credict_card_balance_agg.columns]
+
+#%% combine all the data together
+df = app.join(bureau_agg, how = 'left')
+df = df.join(pre_agg, how = 'left', rsuffix = 'pre')
+df = df.join(pos_cach_balance_agg, how = 'left', rsuffix = 'pos')
+df = df.join(ins_pay_agg, how = 'left', rsuffix = 'ins')
+df = df.join(credict_card_balance_agg, how = 'left', rsuffix = 'card')
+
+#%% train, valid, test split 
+
+x_train = df.loc[y_train.index]
+test_idx = [i for i in df.index if i not in y_train.index]
+x_test = df.loc[test_idx]
+
+idx = np.random.permutation(x_train.shape[0])
+
+x_valid = x_train.iloc[idx[250000:]]
+x_train = x_train.iloc[idx[:250000]]
+
+y_valid = y_train.iloc[idx[250000:]]
+y_train = y_train.iloc[idx[:250000]]
+
+#%% train the model
+
+model = lgb.LGBMClassifier(n_estimators=10000, objective = 'binary', 
+                                   learning_rate = 0.05, 
+                                   reg_alpha = 0.1, reg_lambda = 0.1, 
+                                   subsample = 0.8, nthread = 4)
+
+print("=============== start training ================")
+print(datetime.datetime.now())
+model.fit(x_train, y_train, eval_metric = 'auc',
+                  eval_set = [(x_valid, y_valid), (x_train, y_train)],
+                  eval_names = ['valid', 'train'], 
+                  early_stopping_rounds = 100, verbose = 200)
+print("============== training finishes ==============")
+print(datetime.datetime.now())
