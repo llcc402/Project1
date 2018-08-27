@@ -11,6 +11,9 @@ import numpy as np
 from collections import defaultdict
 import lightgbm as lgb
 import datetime
+from sklearn.metrics import roc_curve, auc
+from hyperopt import fmin, hp, tpe
+from sklearn.model_selection import KFold
 
 #%% read app data
 app_train = pd.read_csv('application_train.csv', index_col = 0)
@@ -272,15 +275,129 @@ y_train = y_train.iloc[idx[:250000]]
 #%% train the model
 
 model = lgb.LGBMClassifier(n_estimators=10000, objective = 'binary', 
-                                   learning_rate = 0.05, 
-                                   reg_alpha = 0.1, reg_lambda = 0.1, 
-                                   subsample = 0.8, nthread = 4)
+                                   learning_rate = 0.02,
+                                   num_leaves = 34,
+                                   colsample_bytree=0.9497036,
+                                   subsample=0.8715623,
+                                   max_depth=8,
+                                   reg_alpha=0.041545473,
+                                   reg_lambda=0.0735294,
+                                   min_split_gain=0.0222415,
+                                   min_child_weight=39.3259775,
+                                   silent=-1,
+                                   verbose=-1,
+                                   nthread = 4)
 
 print("=============== start training ================")
 print(datetime.datetime.now())
 model.fit(x_train, y_train, eval_metric = 'auc',
                   eval_set = [(x_valid, y_valid), (x_train, y_train)],
                   eval_names = ['valid', 'train'], 
-                  early_stopping_rounds = 100, verbose = 200)
+                  early_stopping_rounds = 200, verbose = 100)
 print("============== training finishes ==============")
 print(datetime.datetime.now())
+
+##%% use hyperopt to optimize the hyper-parameters
+#def objective(args):
+#    num_leaves, max_depth, learning_rate, min_split_gain, min_child_samples, subsample, reg_alpha, reg_lambda = args
+#    model = lgb.LGBMClassifier(n_estimators=10000,
+#                               objective = 'binary',
+#                               learning_rate = learning_rate,
+#                               num_leaves = num_leaves,
+#                               max_depth = max_depth,
+#                               min_split_gain = min_split_gain,
+#                               min_child_samples = min_child_samples,
+#                               subsample = subsample,
+#                               reg_alpha = reg_alpha,
+#                               reg_lambda = reg_lambda)
+#    model.fit(x_train, y_train, 
+#              early_stopping_rounds=200,
+#              eval_metric = 'auc',
+#              eval_set = [(x_valid, y_valid), (x_train, y_train)])
+#    y_pred = model.predict_proba(x_valid)
+#    fpr, tpr, _ = roc_curve(y_valid, y_pred[:,1])
+#    return 1 - auc(fpr, tpr)
+#
+#space = [(2 + hp.randint('num_leaves', 500)),
+#         (2 + hp.randint('max_depth', 100)),
+#         hp.lognormal('learning_rate', 0.1, 0.2),
+#         hp.lognormal('min_split_gain', 0.1, 0.2),
+#         (1 + hp.randint('min_child_samples', 100)),
+#         hp.uniform('subsample', 0, 1),
+#         hp.lognormal('reg_alpha', 0.1, 0.2),
+#         hp.lognormal('reg_lambda', 0.1, 0.2)]
+#
+#print("=============== start training ================")
+#print(datetime.datetime.now())
+#best = fmin(objective, space, max_evals = 500, algo = tpe.suggest)
+#print("============== training finishes ==============")
+#print(datetime.datetime.now())
+#
+##%% train using the best
+#model = lgb.LGBMClassifier(n_estimators=10000, objective = 'binary', 
+#                                   learning_rate = best['learning_rate'], 
+#                                   reg_alpha = best['reg_alpha'], 
+#                                   reg_lambda = best['reg_lambda'], 
+#                                   subsample = best['subsample'], 
+#                                   max_depth = best['max_depth'],
+#                                   min_child_samples = best['min_child_samples'],
+#                                   min_split_gain= best['min_split_gain'],
+#                                   num_leaves= best['num_leaves'],
+#                                   nthread = 4)
+#
+#print("=============== start training ================")
+#print(datetime.datetime.now())
+#model.fit(x_train, y_train, eval_metric = 'auc',
+#                  eval_set = [(x_valid, y_valid), (x_train, y_train)],
+#                  eval_names = ['valid', 'train'], 
+#                  early_stopping_rounds = 100, verbose = 200)
+#print("============== training finishes ==============")
+#print(datetime.datetime.now())
+#
+
+#%% KFold
+
+# training data
+x_train = df.loc[y_train.index]
+
+# test data
+test_idx = [i for i in df.index if i not in y_train.index]
+x_test = df.loc[test_idx]
+
+# init pred
+pred = np.zeros([x_test.shape[0], 2])
+
+# kfold cross validation
+kfolds = KFold(n_splits=5, shuffle = True)
+for train_idx, valid_idx in kfolds.split(x_train, y_train):
+    
+    # create training and valid data
+    x_train_fold = x_train.iloc[train_idx]
+    x_valid = x_train.iloc[valid_idx]
+    y_train_fold = y_train.iloc[train_idx]
+    y_valid = y_train.iloc[valid_idx]
+    
+    model = lgb.LGBMClassifier(n_estimators=10000, objective = 'binary', 
+                                   learning_rate = 0.02,
+                                   num_leaves = 34,
+                                   colsample_bytree=0.9497036,
+                                   subsample=0.8715623,
+                                   max_depth=8,
+                                   reg_alpha=0.041545473,
+                                   reg_lambda=0.0735294,
+                                   min_split_gain=0.0222415,
+                                   min_child_weight=39.3259775,
+                                   silent=-1,
+                                   verbose=-1,
+                                   nthread = 4)
+    model.fit(x_train_fold, y_train_fold, eval_metric = 'auc',
+                  eval_set = [(x_valid, y_valid), (x_train_fold, y_train_fold)],
+                  eval_names = ['valid', 'train'], 
+                  early_stopping_rounds = 200, verbose = 100)
+    pred = pred + model.predict_proba(x_test)
+
+# normalize pred
+pred = pred / 5
+
+# write pred to csv
+pd.DataFrame(pred[:,1],index=x_test.index, columns=['TARGET']).to_csv('pred.csv')
